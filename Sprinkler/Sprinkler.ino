@@ -10,54 +10,15 @@
 *********/
 
 #define SOFTAP
-#define CH_NUM 2
 
 #include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#include <Wire.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
-#include "EEPROM.h"
 
 
-typedef struct {
-  uint16_t time_ON;
-  uint8_t  len;
-  uint8_t  active;
-} chanel_setup;
+#include "WebServer.h"
+#include "EEPROM_data.h"
 
-
-typedef struct {
-  chanel_setup ch[CH_NUM];
-} EEPROM_struct;
-
-#define EEPROM_SIZE sizeof(EEPROM_struct)
 EEPROM_struct data;
-
-void ReadEEPROM(uint8_t * p, uint16_t size)
-{
-	for(uint16_t i=0; i<size; i++)
-		p[i] = EEPROM.readByte(i);
-}
-void WriteEEPROM(uint8_t * p, uint16_t size)
-{
-	for(uint16_t i=0; i<size; i++)
-		EEPROM.writeByte(i, p[i]);
-	EEPROM.commit();
-}
-
-String MinTime2Sring(uint16_t t )
-{
-	char res[]="00:00\0";
-	uint8_t h = t / 60;
-	uint8_t m = t % 60;
-	res[0] = h / 10 + '0';
-	res[1] = h % 10 + '0';
-	res[2] = m / 10 + '0';
-	res[4] = m % 10 + '0';	
-	return String(res);
-}
+#define LED_BUILTIN 2
 
 #ifdef SOFTAP
 const char* ssid = "SPRINKLER";
@@ -67,69 +28,130 @@ const char* ssid = "4OBEZYAN";
 const char* password = "1QAZXSW2";
 #endif
 
-// Default Threshold Temperature Value
-String inputMessage = "25.0";
-String lastTemperature;
-String enableArmChecked = "checked";
-String inputMessage2 = "true";
 
-// HTML web page to handle 2 input fields (threshold_input, enable_arm_input)
-const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE HTML><html><head>
-  <title>Temperature Threshold Output Control</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  </head><body>
-  <h2>DS18B20 Temperature</h2> 
-  <h3>%TEMPERATURE% &deg;C</h3>
-  <h2>ESP Arm Trigger</h2>
-  <form action="/get">
-    Temperature Threshold <input type="number" step="0.1" name="threshold_input" value="%THRESHOLD%" required><br>
-    Arm Trigger <input type="checkbox" name="enable_arm_input" value="true" %ENABLE_ARM_INPUT%><br>
-    Time <input type="time" name="timeON" value="20:00"> <br>
-    <br> <input type="submit" value="Submit">
-  </form>
-</body></html>)rawliteral";
+uint16_t nCurrentTime = 0;
+#define M_OPEN  true
+#define M_CLOSE false
+#define NOT_SET 0xFFFFFFFF
 
-void notFound(AsyncWebServerRequest *request) {
-  request->send(404, "text/plain", "Not found");
+hw_timer_t * timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t secCounter = NOT_SET;
+volatile uint32_t secCounterPrev = NOT_SET;
+//volatile int secM1_ON = -1;
+//volatile int secM2_ON = -1;
+//volatile int secM1_Timer = 0;
+//volatile int secM2_Timer = 0;
+
+void IRAM_ATTR onTimer() {
+  portENTER_CRITICAL_ISR(&timerMux);
+  secCounter++;
+  if(secCounter == 86400)
+	  secCounter = 0;
+  portEXIT_CRITICAL_ISR(&timerMux);
 }
 
-AsyncWebServer server(80);
-
-// Replaces placeholder with DS18B20 values
-String processor(const String& var){
-  //Serial.println(var);
-  if(var == "TEMPERATURE"){
-    return lastTemperature;
-  }
-  else if(var == "THRESHOLD"){
-    return inputMessage;
-  }
-  else if(var == "ENABLE_ARM_INPUT"){
-    return enableArmChecked;
-  }
-  return String();
+void setup_timer()
+{
+  timer = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer, &onTimer, true);
+  timerAlarmWrite(timer, 1000000, true);
+  //timerAlarmEnable(timer);
 }
 
-// Flag variable to keep track if triggers was activated or not
-bool triggerActive = false;
+void start_timer(int sec)
+{
+  secCounter = sec;
+  timerAlarmEnable(timer);
+}
 
-const char* PARAM_INPUT_1 = "threshold_input";
-const char* PARAM_INPUT_2 = "enable_arm_input";
+void printTime()
+{
+  if(secCounter != NOT_SET)
+  {
+    Serial.print("Time: ");
+    Serial.print(secCounter / 3600);
+    Serial.print(":");
+    Serial.print(secCounter % 3600 / 60);
+    Serial.print(":");
+    Serial.println(secCounter % 60);
+  }
+  else
+    Serial.println("Time: N.A.");
+}
 
-// Interval between sensor readings. Learn more about ESP32 timers: https://RandomNerdTutorials.com/esp32-pir-motion-sensor-interrupts-timers/
-unsigned long previousMillis = 0;     
-const long interval = 5000;    
+uint32_t timeToSec(String t)
+{
+	uint32_t r = 0;
+	if(t.length() < 8)
+		return 0;
+	if(t[2] != ':' || t[5] != ':')
+		return 0;
+	
+	r += (t[0]-'0')*36000;
+	r += (t[1]-'0')*3600;	
+	r += (t[3]-'0')*600;	
+	r += (t[4]-'0')*60;	
+	r += (t[6]-'0')*10;	
+	r += (t[7]-'0');
+	return r;	
+}
 
-// GPIO where the output is connected to
-const int output = 2;
+#define P_NAME 0
+#define PA 1
+#define PB 2
+//const uint8_t M1[] = {1,19,18};
+//const uint8_t M2[] = {2,17,16};
+const uint8_t MOTORS[CH_NUM][3] = {{1,19,18},{2,17,16}};
 
-// GPIO where the DS18B20 is connected to
-const int oneWireBus = 4;     
-// Setup a oneWire instance to communicate with any OneWire devices
-OneWire oneWire(oneWireBus);
-// Pass our oneWire reference to Dallas Temperature sensor 
-DallasTemperature sensors(&oneWire);
+void setup_motors()
+{
+  pinMode(MOTORS[0][PA], OUTPUT);
+  pinMode(MOTORS[0][PB], OUTPUT);
+  pinMode(MOTORS[1][PA], OUTPUT);
+  pinMode(MOTORS[1][PB], OUTPUT);  
+  set_motor(MOTORS[0], false);
+  set_motor(MOTORS[1], false);
+}
+
+void set_motor(const uint8_t* m, bool bOnOff)
+{
+   Serial.print("Motor ");
+   Serial.print(m[P_NAME]);
+
+   if(bOnOff)
+   {
+     digitalWrite(m[PA], HIGH);  
+     digitalWrite(m[PB], LOW);  
+     Serial.println("->OPEN");
+   }
+   else
+   {
+     digitalWrite(m[PA], LOW);  
+     digitalWrite(m[PB], HIGH);      
+     Serial.println("->CLOSE");
+   }
+   
+   delay(100);
+   digitalWrite(m[PA], LOW);  
+   digitalWrite(m[PB], LOW); 
+}
+
+void open_valwe(const uint8_t* m, const uint32_t open_time)
+{
+	if(open_time == 0)
+		return;
+	
+	set_motor(m, true); 
+	digitalWrite(LED_BUILTIN, HIGH);
+	for(int i=open_time; i>0; i--)
+	{
+		Serial.println(i);
+		delay(1000);
+	}	 
+	set_motor(m, false);
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -167,79 +189,43 @@ void setup() {
   Serial.println(WiFi.localIP());
 #endif  
 
-  ReadEEPROM((uint8_t *)&data, sizeof(data));
-  inputMessage = String(data.ch[0].len);
-
-  pinMode(output, OUTPUT);
-  digitalWrite(output, LOW);
+	ReadEEPROM((uint8_t *)&data, sizeof(data));
+ 
+    setup_motors();
+    setup_timer();
   
-  // Start the DS18B20 sensor
-  sensors.begin();
-  
-  // Send web page to client
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", index_html, processor);
-  });
-
-  // Receive an HTTP GET request at <ESP_IP>/get?threshold_input=<inputMessage>&enable_arm_input=<inputMessage2>
-  server.on("/get", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    // GET threshold_input value on <ESP_IP>/get?threshold_input=<inputMessage>
-    if (request->hasParam(PARAM_INPUT_1)) {
-      inputMessage = request->getParam(PARAM_INPUT_1)->value();
-	  
-	  data.ch[0].len = inputMessage.toInt();
-	  WriteEEPROM((uint8_t*)&data, sizeof(data));
-	  
-      // GET enable_arm_input value on <ESP_IP>/get?enable_arm_input=<inputMessage2>
-      if (request->hasParam(PARAM_INPUT_2)) {
-        inputMessage2 = request->getParam(PARAM_INPUT_2)->value();
-        enableArmChecked = "checked";
-      }
-      else {
-        inputMessage2 = "false";
-        enableArmChecked = "";
-      }
-    }
-    Serial.println(inputMessage);
-    Serial.println(inputMessage2);
-    request->send(200, "text/html", "HTTP GET request sent to your ESP.<br><a href=\"/\">Return to Home Page</a>");
-  });
-  server.onNotFound(notFound);
-  server.begin();
+    pinMode(LED_BUILTIN, OUTPUT);
+	WebServerBegin();
 }
 
+
 void loop() {
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-    sensors.requestTemperatures();
-    // Temperature in Celsius degrees 
-    float temperature = sensors.getTempCByIndex(0);
-    Serial.print(temperature);
-    Serial.println(" *C");
-    
-    // Temperature in Fahrenheit degrees
-    /*float temperature = sensors.getTempFByIndex(0);
-    Serial.print(temperature);
-    Serial.println(" *F");*/
-    
-    lastTemperature = String(temperature);
-    
-    // Check if temperature is above threshold and if it needs to trigger output
-    if(temperature > inputMessage.toFloat() && inputMessage2 == "true" && !triggerActive){
-      String message = String("Temperature above threshold. Current temperature: ") + 
-                            String(temperature) + String("C");
-      Serial.println(message);
-      triggerActive = true;
-      digitalWrite(output, HIGH);
-    }
-    // Check if temperature is below threshold and if it needs to trigger output
-    else if((temperature < inputMessage.toFloat()) && inputMessage2 == "true" && triggerActive) {
-      String message = String("Temperature below threshold. Current temperature: ") + 
-                            String(temperature) + String(" C");
-      Serial.println(message);
-      triggerActive = false;
-      digitalWrite(output, LOW);
-    }
-  }
+  //unsigned long currentMillis = millis();
+  //if (currentMillis - previousMillis >= interval) {
+  //}
+
+	if(secCounter != NOT_SET)
+	{
+		if(secCounterPrev != secCounter) // new sec
+		{
+			printTime();
+			secCounterPrev = secCounter;
+			digitalWrite(LED_BUILTIN, (secCounter % 2) == 0);
+			for(int i=0; i<CH_NUM; i++)
+				if(data.ch[i].active)
+				{
+					if(secCounter == data.ch[i].time_ON * 60)
+						open_valwe(MOTORS[i], data.ch[i].duration * 60);			
+				}			
+		}
+
+	}
+	else
+	{
+	  digitalWrite(LED_BUILTIN, HIGH);  
+	  delay(100);                       
+	  digitalWrite(LED_BUILTIN, LOW);   
+	  delay(100);                       
+	}
+
 }
