@@ -12,7 +12,7 @@
 #define SOFTAP
 
 #include <WiFi.h>
-
+#include <esp_wifi.h>
 
 #include "WebServer.h"
 #include "EEPROM_data.h"
@@ -38,6 +38,7 @@ hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t secCounter = NOT_SET;
 volatile uint32_t secCounterPrev = NOT_SET;
+volatile uint32_t secWIFI_ON = 60;
 //volatile int secM1_ON = -1;
 //volatile int secM2_ON = -1;
 //volatile int secM1_Timer = 0;
@@ -48,6 +49,8 @@ void IRAM_ATTR onTimer() {
   secCounter++;
   if(secCounter == 86400)
 	  secCounter = 0;
+  if(secWIFI_ON)
+	  secWIFI_ON --;
   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
@@ -204,6 +207,7 @@ void loop() {
   //if (currentMillis - previousMillis >= interval) {
   //}
 
+
 	if(secCounter != NOT_SET)
 	{
 		if(secCounterPrev != secCounter) // new sec
@@ -211,6 +215,13 @@ void loop() {
 			printTime();
 			secCounterPrev = secCounter;
 			digitalWrite(LED_BUILTIN, (secCounter % 2) == 0);
+			
+			if(secWIFI_ON == 1)
+			{
+				Serial.println("esp_wifi_stop");
+				esp_wifi_stop(); 
+			}
+  
 			for(int i=0; i<CH_NUM; i++)
 				if(data.ch[i].active)
 				{

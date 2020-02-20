@@ -61,7 +61,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 	
     <script>
 	  var date = new Date();
-	  var currentTime = date.getHours() + ':' + ((date.getMinutes()<10?'0':'') + date.getMinutes());
+	  var currentTime = ((date.getHours()<10?'0':'') + date.getHours()) + ':' + ((date.getMinutes()<10?'0':'') + date.getMinutes());
 	  document.getElementById("time_id").value = currentTime;  
     </script>	
 	
