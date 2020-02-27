@@ -12,7 +12,7 @@ String strCH0_TimeOn = "19:00";
 String strCH1_TimeOn = "19:30";
 
 String strCurrentTime;
-extern void start_timer(int sec);
+extern void set_time(int sec); //in min
 
 String MinTime2Sring(uint16_t t )
 {
@@ -124,7 +124,7 @@ void WebServerBegin()
       strCurrentTime = request->getParam("current_time")->value();
 	  nCurrentTime = Sring2MinTime(strCurrentTime);
 	  Serial.printf("CurrentTime=%d min \n", nCurrentTime);
-	  start_timer(nCurrentTime * 60);
+	  set_time(nCurrentTime); //in min
     }	
     if (request->hasParam("ch0_duration")) 
 	{
