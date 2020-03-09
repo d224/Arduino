@@ -13,6 +13,7 @@ String strCH1_TimeOn = "19:30";
 
 String strCurrentTime;
 extern void set_time(int sec); //in min
+extern uint16_t moistureSensorVal;
 
 String MinTime2Sring(uint16_t t )
 {
@@ -47,6 +48,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   
 
   <h2>Sprinkler</h2>
+  <h2>MoistureSensor: %MOISTURE_SENSOR%</h2>
   <form action="/get">
 	Time: <input type="time" id="time_id" name="current_time" value="00:00"> <br>
     <h2>Chanel A:</h2>
@@ -102,6 +104,12 @@ String processor(const String& var){
 	{
 		return MinTime2Sring(data.ch[1].time_ON);
 	}  
+	else if(var == "MOISTURE_SENSOR")
+	{
+		return String(moistureSensorVal);
+	}	
+	
+	
   return String();
 }
 

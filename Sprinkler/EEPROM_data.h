@@ -7,7 +7,7 @@
 #define CH_NUM 2
 
 typedef struct {
-  uint16_t time_ON;
+  uint32_t time_ON;
   uint8_t  duration;
   uint8_t  active;
 } chanel_setup;
