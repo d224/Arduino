@@ -14,6 +14,8 @@ typedef struct {
 
 
 typedef struct {
+  char id[8];
+  int32_t ver;
   chanel_setup ch[CH_NUM];
 } EEPROM_struct;
 

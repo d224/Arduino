@@ -13,7 +13,7 @@ String strCH1_TimeOn = "19:30";
 
 String strCurrentTime;
 extern void set_time(int sec); //in min
-extern uint16_t moistureSensorVal;
+uint16_t moistureSensorVal = 0;
 
 String MinTime2Sring(uint16_t t )
 {
