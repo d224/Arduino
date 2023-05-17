@@ -246,6 +246,7 @@ unsigned long WebTimeClass::sendNTPpacket(IPAddress & address)
 	udp.beginPacket(address, 123); //NTP requests are to port 123
 	udp.write(NTPpacketBuffer, NTP_PACKET_SIZE);
 	udp.endPacket();
+  return 0;
 }
 ////////////////////////////////////////////////////////////////////////////
 bool WebTimeClass::getNTP()

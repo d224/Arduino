@@ -20,23 +20,22 @@
 #include "WebServer.h"
 #include <Adafruit_NeoPixel.h>
 #include <ezButton.h>
-//#include <ACS712.h>
+#include <ACS712.h>
 
 #define PW_SW LED_BUILTIN
 
-//TaskHandle_t NotificationTask;
-//TaskHandle_t ButtonTask;
 
 WiFiMulti wifiMulti;
-ezButton button( 13 );
+ezButton button( 12 );
 WiFiUDP udp;
-Adafruit_NeoPixel rgb0 (1, 15, NEO_GRB + NEO_KHZ800 );
+Adafruit_NeoPixel rgb0 (1, 13, NEO_GRB + NEO_KHZ800 );
 //  ACS712 5A  uses 185 mV per A
 //  ACS712 20A uses 100 mV per A
 //  ACS712 30A uses  66 mV per A
-//ACS712  ACS(25, 3.3, 4095, 100);   // 20A
+ACS712  ACS(23, 3.3, 4095, 100);   // 20A
 
-bool nState = 0;
+bool bState = false;
+bool bButtonReleased = false;
 bool bConnected = false;
 uint nCurrent_mA = 0;
 #define bCurrent (nCurrent_mA > 10)
@@ -59,13 +58,13 @@ const char* host = "Dud_OnOff";
 int GetSSR()
 {
  //return digitalRead( PW_SW ); 
-  return nState; 
+  return bState; 
 }
 
 void SetSSR(uint8_t val)
 {
  //digitalWrite( PW_SW, val ); 
-  nState = val; 
+  bState = val; 
 }
 
 String GetPowerStr()
@@ -98,11 +97,14 @@ void acsTask( void * parameter)
 {
   for(;;)
   {
-    //nCurrent_mA = ACS.mA_AC();
-    Serial.print("mA: ");
-    Serial.println( nCurrent_mA );
-//  Serial.print(". Form factor: ");
-//  Serial.println(ACS.getFormFactor());
+    if( bState )
+    {
+      nCurrent_mA = ACS.mA_AC();
+      Serial.print("mA: ");
+      Serial.println( nCurrent_mA );
+  //  Serial.print(". Form factor: ");
+  //  Serial.println(ACS.getFormFactor());      
+    }
     delay (1000 );
   }
 }
@@ -116,9 +118,9 @@ void buttonTask( void * parameter)
 
     if(button.isReleased())
     {
-      nState = !nState;
-      Serial.print( "button: PW " );
-      Serial.println( nState );
+      bState = !bState;
+      Serial.println( "button: Released" );
+      bButtonReleased = true;
     }
     
     delay(100);
@@ -129,7 +131,7 @@ void notificationTask( void * parameter)
 {
   for(;;)
   {
-    if( nState ) 
+    if( bState ) 
     {
       // ON
       digitalWrite(PW_SW, HIGH);
@@ -167,8 +169,7 @@ void WiFiStationConnected(WiFiEvent_t event, WiFiEventInfo_t info)
 
 void WiFiGotIP(WiFiEvent_t event, WiFiEventInfo_t info)
 {
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
+  Serial.print("WiFi connected: ");
   Serial.println(WiFi.localIP());
   bConnected = true;
 }
@@ -209,8 +210,7 @@ void setup(void)
   Serial.println("Connecting Wifi...");
   if (wifiMulti.run() == WL_CONNECTED) {
     Serial.println("");
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
+    Serial.print("WiFi connected: ");
     Serial.println(WiFi.localIP());
   }
 
@@ -248,17 +248,22 @@ void setup(void)
 
 String srtPacket;
 //////////////////////////////////////////////////////////////////////////
-int mqtt_udp_send_pkt(int fd, char* data, size_t len) {
+int mqtt_udp_send_pkt(int fd, char* data, size_t len) 
+{
   int success;
   success = udp.beginPacket(IPAddress(255, 255, 255, 255), MQTT_PORT);
   success = udp.write((uint8_t*)data, len);
   success = udp.endPacket();
   udp.stop();
-  //Serial.println("sent!");
+
+  Serial.print( "mqtt_udp_send_pkt:" );
+  Serial.println( String(data + 4) );
+
   udp.begin(MQTT_PORT);
   return 0;
 }
-void UDPMQTTHandler() {
+void UDPMQTTHandler() 
+{
   int pktSize = udp.parsePacket();
   if (pktSize) {
     byte pktBuf[pktSize];
@@ -270,35 +275,37 @@ void UDPMQTTHandler() {
     String sBuf = String((char*)pktBuf + 4);
     String topic = sBuf.substring(0, topic_len);
     String val = sBuf.substring(topic_len, topic_len + val_len);
-    Serial.printf("%s=%s\n", topic.c_str(), val.c_str());
+    Serial.printf("UDPMQTTHandler: %s=%s\n", topic.c_str(), val.c_str());
 
     if (topic == String("Dud/SetPower")) 
     {
-      bool nStatePrev = nState;
-      nState = val.toInt();
-      if (nStatePrev != nState) 
+      bool nStatePrev = bState;
+      bState = val.toInt();
+      if (nStatePrev != bState) 
       {
-        Serial.print( "UDPMQTTHandler: PW " );
-        Serial.println( nState );
+        Serial.print( "UDPMQTTHandler: set State " );
+        Serial.println( bState );
       }
     }
   }
 }
 ///////////////////////////////////////////////////MQTT_PORT success///////////////////////
 unsigned long previousMillis = millis();
-int di = 0;
+unsigned long di = 0;
+uint UDPMQTTHandlerDelay = 0;
 
-void loop(void) {
+void loop(void) 
+{
   //ESP.wdtFeed();
   yield();
 
   if ( wifiMulti.run() != WL_CONNECTED )
   {
     bConnected = false;
-    Serial.print("WiFi disconnected ");
+    Serial.print("Offline ");
     Serial.println( di++ );
     delay(1000);
-    if ( di > 30 )
+    if ( di > 30 && (!bState) )
       ESP.restart();    
   } 
 
@@ -306,15 +313,35 @@ void loop(void) {
   {   
     di = 0;
     ArduinoOTA.handle();
-    UDPMQTTHandler();
+    if( UDPMQTTHandlerDelay == 0 )
+      UDPMQTTHandler();
 
     unsigned long currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
-    if (currentMillis - previousMillis >= 1000)  //test whether the period has elapsed
+    if ( ( currentMillis - previousMillis >= 1000 ) || bButtonReleased )  //test whether the period has elapsed
     {
-      previousMillis = currentMillis;
       // onse a 1 sec
-      String tmp = String( nState );
-      mqtt_udp_send(0, "Dud/Power", (char*)tmp.c_str());
+      previousMillis = currentMillis;
+
+      if( bButtonReleased )
+      {
+        bButtonReleased = false; 
+        bState != bState ;  
+        Serial.print( "Button => state " );
+        Serial.println( bState ) ; 
+        UDPMQTTHandlerDelay = 10;   
+      }
+     
+      if( UDPMQTTHandlerDelay > 0 )
+      {
+        Serial.print("UDPMQTTHandlerDelay "); Serial.println( UDPMQTTHandlerDelay );
+        UDPMQTTHandlerDelay--;
+        mqtt_udp_send(0, "Dud/SetPower", "1");
+      }
+
+      if( bState )
+        mqtt_udp_send(0, "Dud/Power", "1");
+      else
+        mqtt_udp_send(0, "Dud/Power", "0");
       //Serial.print("mqtt_udp_send Dud/Power:");
       //Serial.println(tmp);
     }
