@@ -12,8 +12,8 @@
 
 #define CONFIGTZTIMESTR "EET-2EEST,M3.4.4/50,M10.4.4/50" // #define TZ_Asia_Hebron
 
-const char* ntpServer1 = "timeserver.iix.net.il";
-const char* ntpServer2 = "pool.ntp.org";
+const char* ntpServer2 = "timeserver.iix.net.il";
+const char* ntpServer1 = "pool.ntp.org";
 //const char* ntpServer3 = "time.nist.gov";
 
 const long  gmtOffset_sec = 3600;
@@ -32,6 +32,7 @@ uint32_t WebTime::m_Timezone = 0; //in sec
 uint32_t WebTime::m_Sunrise = 6 * 3600; // 06:00
 uint32_t WebTime::m_Sunset = 19 * 3600; // 19:00
 bool     WebTime::m_WiFi_connectNeeded = true;
+bool     WebTime::m_geonames_updated = false;
 
 //https://techtutorialsx.com/2017/10/07/esp32-arduino-timer-interrupts/
 void IRAM_ATTR onTimer0_1sec() 
@@ -83,7 +84,7 @@ byte NTPpacketBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing pa
 void WebTimeTask( void * parameter)
 {
   Serial.print("WebTimeTask started");
-  short geonames_retry = 3;
+  short geonames_retry = 120;
   for(;;)
   {
     if ( WebTime::isValid() )
@@ -94,6 +95,7 @@ void WebTimeTask( void * parameter)
         int32_t geonames_Time = WebTime::geonames();
         if( geonames_Time >=0 ) 
         {
+          WebTime::m_geonames_updated = true;
           geonames_retry = 0;
           int32_t timeDeltaSS =  geonames_Time - WebTime::m_secSinceMidNight;
           Serial.printf("geonames time delta %d\n", timeDeltaSS);
@@ -121,10 +123,17 @@ void WebTimeTask( void * parameter)
         }
         geonames_retry --;
       }
+      else //geonames_retry = 0;
+      {
+        Serial.printf("geonames fail to get data")
+        WebTime::m_WiFi_connectNeeded = false;
+        WebTime::m_geonames_updated = false;
+      }
     }
     else 
     {
       Serial.print("#Time invalid\n");
+      //todo: restart if more than 60
     }
 
     delay(1000);

@@ -29,6 +29,7 @@ class WebTime
     static uint32_t m_Sunrise;
     static uint32_t m_Sunset;
     static bool m_WiFi_connectNeeded;
+    static bool WebTime::m_geonames_updated;
 
     void Start();
     static bool isValid();

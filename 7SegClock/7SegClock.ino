@@ -75,17 +75,20 @@ void setup()
 
 }
 
-
+uint32_t timeWD = 0;
 void loop()
 {
   if( WebTime::isWiFi_connectNeeded() )
   {
-    Serial.println("Connecting Wifi...");
-    if ( wifiMulti.run() != WL_CONNECTED )
+    if( WiFi.status() != WL_CONNECTED )
     {
-        Serial.print("!WL_CONNECTED\n");
-        delay(1000);
-    }    
+      Serial.println("Connecting Wifi...");
+      if ( wifiMulti.run() != WL_CONNECTED )
+      {
+          Serial.print("!WL_CONNECTED\n");
+          delay(8000);
+      }       
+    }
   }
   else  // !isWiFi_connectNeeded
   {
@@ -94,6 +97,20 @@ void loop()
       Serial.print("WiFi close\n");
       WiFi.disconnect(true);      
     }  
+  }
+
+  if( WebTime::isValid())
+  {
+    timeWD = 0;
+  }
+  else 
+  {
+    timeWD ++;
+    if( timeWD > 600)
+    {
+        Serial.print("Restart - mo time availible\n");
+        ESP.restart();
+    }
   }
   delay(1000);
 }
