@@ -32,13 +32,13 @@ Adafruit_NeoPixel rgb0 (1, 13, NEO_GRB + NEO_KHZ800 );
 //  ACS712 5A  uses 185 mV per A
 //  ACS712 20A uses 100 mV per A
 //  ACS712 30A uses  66 mV per A
-ACS712  ACS(23, 3.3, 4095, 100);   // 20A
+ACS712  ACS( 33, 3.3, 4095, 100 );   // 20A
 
 bool bState = false;
 bool bButtonReleased = false;
 bool bConnected = false;
-uint nCurrent_mA = 0;
-#define bCurrent (nCurrent_mA > 10)
+int nCurrent_mA = 0;
+#define bCurrent (nCurrent_mA > 1000 )
 
 const char* host = "Dud_OnOff";
 
@@ -70,7 +70,7 @@ void SetSSR(uint8_t val)
 String GetPowerStr()
 {
  if( bCurrent )  
-    return "Porwer: " + String( float( nCurrent_mA / 100.0 ), 1 ) + " A";
+    return "Porwer: " + String( float( nCurrent_mA / 100.0 ), 1 ) + " A\0";
   else
     return "";  
 }
@@ -92,16 +92,21 @@ void RGB_Begin()
   RGB_Show( BLUE );  delay( 100 );
   RGB_Show( WHITE );
 }
-
 void acsTask( void * parameter) 
 {
+  ACS.autoMidPoint();
+  Serial.print("MidPoint: ");
+  Serial.print(ACS.getMidPoint());
+  Serial.print(". Noise mV: ");
+  Serial.println(ACS.getNoisemV());
+
   for(;;)
   {
     if( bState )
     {
-      nCurrent_mA = ACS.mA_AC();
-      Serial.print("mA: ");
-      Serial.println( nCurrent_mA );
+      nCurrent_mA = ACS.mA_AC( 50, 3 );
+      Serial.printf("Current: %d mA\n", nCurrent_mA);
+
   //  Serial.print(". Form factor: ");
   //  Serial.println(ACS.getFormFactor());      
     }
@@ -160,7 +165,6 @@ void notificationTask( void * parameter)
 
   }
 }
-
 
 void WiFiStationConnected(WiFiEvent_t event, WiFiEventInfo_t info)
 {
@@ -238,7 +242,6 @@ void setup(void)
   Serial.println(udp.begin(MQTT_PORT) ? "MQTT_PORT success" : "MQTT_PORT failed");
   WebServerSetup();
 
-  //pinMode(LED_BUILTIN, OUTPUT);
   pinMode(PW_SW, OUTPUT);
 
   xTaskCreatePinnedToCore( notificationTask,  "notificationTask", 10240, NULL, 0, NULL, 1);        
@@ -347,3 +350,13 @@ void loop(void)
     }
   }
 }
+/*
+void loop0()
+{
+  int mA = ACS.mA_AC();
+  Serial.print("mA: ");
+  Serial.print(mA);
+  Serial.print(". Form factor: ");
+  Serial.println(ACS.getFormFactor());
+}
+*/

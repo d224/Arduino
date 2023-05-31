@@ -48,6 +48,7 @@ int mqtt_udp_send( int fd, char *topic, char *data )
 int mqtt_udp_send_publish( int fd, char *topic, char *data )
 {
     unsigned char buf[BUFLEN];
+    memset(buf, 0, BUFLEN);
 
     int tlen = strnlen( topic, PKT_BUF_SIZE ); // strlen(topic);
     int dlen = strnlen( data, PKT_BUF_SIZE );
