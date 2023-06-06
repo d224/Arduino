@@ -125,7 +125,7 @@ void WebTimeTask( void * parameter)
       }
       else //geonames_retry = 0;
       {
-        Serial.printf("geonames fail to get data")
+        Serial.printf("geonames fail to get data");
         WebTime::m_WiFi_connectNeeded = false;
         WebTime::m_geonames_updated = false;
       }
