@@ -13,8 +13,6 @@ void sendCommand(uint8_t value)
   digitalWrite(strobe_pin, HIGH);
 }
 
- 
-
 void TM1638reset()
 
 {
@@ -78,14 +76,21 @@ void TM1638Out(uint8_t adr, uint8_t val)
   digitalWrite(strobe_pin, HIGH);
 }
 
-static const uint8_t digits[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f };
+static const uint8_t digits[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f, 0x00 };
 void TM1638Digit(uint8_t adr, uint8_t val, bool dot)
 {
-  if(val < 10)
+  if(val <= 10)
     if(dot)
       TM16387Seg(adr, digits[val] | 0x80);
     else
       TM16387Seg(adr, digits[val] );  
+}
+
+void TM1638Digit_non0(uint8_t adr, uint8_t val)
+{
+  if( val == 0 )
+    val = 10; // empty
+  TM1638Digit(adr,val);
 }
 
 void TM16387Seg(uint8_t adr, uint8_t val)
@@ -151,6 +156,7 @@ unsigned char decode_7seg(unsigned char chr)
   return seven_seg_digits_decode_gfedcba[chr - '0']; */
 }
 
+// adr 0--7
 void TM1638Char(uint8_t adr, const char ch)
 {
    TM16387Seg(adr, decode_7seg(ch));
@@ -159,9 +165,11 @@ void TM1638Char(uint8_t adr, const char ch)
 void TM1638Str(const char* str)
 {
   uint i = 0;
-  while(str[i] !=0)
+  while(str[i] !=0 && i<8 )
   {
     TM16387Seg(i, decode_7seg(str[i]));
     i++;  
   }
+  for(;i<8; i++)
+    TM16387Seg(i, 0);
 }
