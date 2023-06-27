@@ -2,7 +2,7 @@
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-import win32gui
+
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
 
@@ -15,6 +15,7 @@ from pystray import Icon as icon, Menu as menu, MenuItem as item
 from PIL import Image, Image, ImageDraw
 import threading
 import sys
+import win32gui
 
 bRun = True
 

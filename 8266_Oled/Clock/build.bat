@@ -1,0 +1,1 @@
+C:\Users\teifd2\AppData\Local\Programs\Python\Python38\Scripts\pyinstaller --onefile -w -F --paths=C:\D224\github\Arduino\8266_Oled\Clock\venv\Lib\site-packages main.py --name OledClock --icon=7segClock.png
