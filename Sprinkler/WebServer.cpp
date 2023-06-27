@@ -55,8 +55,9 @@ const char index_html[] PROGMEM = R"rawliteral(
   <style>
 html {font-family: Times New Roman; display: inline-block; }
 h2 {font-size: 2.3rem;}
-p {font-size: 1.9rem;}
+p {font-size: 2rem;}
 body {max-width: 400px; margin:0px auto; padding-bottom: 25px;}
+.time {  margin: 14px;  background: #38c0ff; font-size: 2rem;}
 .slider { -webkit-appearance: none; margin: 14px; width: 360px; height: 25px; background: #38c0ff; outline: none; -webkit-transition: .2s; transition: opacity .2s;}
 .slider::-webkit-slider-thumb {-webkit-appearance: none; appearance: none; width: 35px; height: 35px; background:#01070a; cursor: pointer;}
 .slider::-moz-range-thumb { width: 35px; height: 35px; background: #01070a; cursor: pointer; } 
@@ -66,6 +67,7 @@ body {max-width: 400px; margin:0px auto; padding-bottom: 25px;}
 .shade:before {position: absolute; content: ""; height: 52px; width: 52px; left: 8px; bottom: 8px; background-color: #fff; -webkit-transition: .4s; transition: .4s; border-radius: 68px}   
 input:checked+.shade {background-color: #2196F3}
 input:checked+.shade:before {-webkit-transform: translateX(52px); -ms-transform: translateX(52px); transform: translateX(52px)} 
+.btn { width: 220px;  font-size: 2rem; background: #38c0ff; border-radius: 68px} 
   </style>
   </head><body>
   
@@ -74,18 +76,39 @@ input:checked+.shade:before {-webkit-transform: translateX(52px); -ms-transform:
   <h2>MoistureSensor: %MOISTURE_SENSOR%</h2>
   <form action="/get">
 	
+    <hr>
     <h2>Chanel A:</h2>
-    Time On <input type="time" name="ch0_timeON" value=%CH0_TIME_ON%> <br>
-    Duration <input type="number" maxlength="4" step="1" name="ch0_duration" value="%CH0_DURATION%" required><br> 
-    Active <input type="checkbox" name="ch0_enable" value="true" %CH0_ENABLE%><br>
+    <input type="time" class="time" name="ch0_timeON" value=%CH0_TIME_ON%>
+    <div class="slidecontainer">
+    <input type="range" min="1" max="60" class="slider" name="ch0_duration" id="ch0_duration" value="%CH0_DURATION%" >
+    <p>Duration: <span id="ch0_duration_val"></span></p>
+    </div>
+    <script>
+      var slider0 = document.getElementById("ch0_duration");
+      var output0 = document.getElementById("ch0_duration_val");
+      output0.innerHTML = slider0.value;
+      slider0.oninput = function() { output0.innerHTML = slider0.value;}
+    </script>
+    <label class="toggle"><input type="checkbox" onchange="toggleCheckbox" name="ch0_enable" value="true"  %CH0_ENABLE% ><span class="shade"></span></label>		
 
+    <hr>
     <h2>Chanel B:</h2>
-    Time On <input type="time" name="ch1_timeON" value=%CH1_TIME_ON%> <br>
-    Duration <input type="number" step="1" name="ch1_duration" value="%CH1_DURATION%" required><br> 
-    Active <input type="checkbox" name="ch1_enable" value="true" %CH1_ENABLE%><br>	
+    <input type="time" class="time" name="ch1_timeON" value=%CH1_TIME_ON%>
+    <div class="slidecontainer">
+    <input type="range" min="1" max="60" class="slider" name="ch1_duration" id="ch1_duration" value="%CH1_DURATION%" >
+    <p>Duration: <span id="ch1_duration_val"></span></p>
+    </div>
+    <script>
+      var slider1 = document.getElementById("ch1_duration");
+      var output1 = document.getElementById("ch1_duration_val");
+      output1.innerHTML = slider1.value;
+      slider1.oninput = function() { output1.innerHTML = slider1.value;}
+    </script>
+    <label class="toggle"><input type="checkbox" onchange="toggleCheckbox" name="ch1_enable" value="true"  %CH1_ENABLE% ><span class="shade"></span></label>	
 
+    <hr>
     <h2>Chanel C:</h2>
-    Time On <input type="time" name="ch2_timeON" value=%CH2_TIME_ON%> 
+    <input type="time" class="time" name="ch2_timeON" value=%CH2_TIME_ON%>
     <div class="slidecontainer">
     <input type="range" min="1" max="60" class="slider" name="ch2_duration" id="ch2_duration" value="%CH2_DURATION%" >
     <p>Duration: <span id="ch2_duration_val"></span></p>
@@ -94,12 +117,13 @@ input:checked+.shade:before {-webkit-transform: translateX(52px); -ms-transform:
       var slider2 = document.getElementById("ch2_duration");
       var output2 = document.getElementById("ch2_duration_val");
       output2.innerHTML = slider2.value;
-      slider2.oninput = function() { output2.innerHTML = this.value;}
+      slider2.oninput = function() { output2.innerHTML = slider2.value;}
     </script>
-    Active <input type="checkbox" name="ch2_enable" value="true" %CH2_ENABLE% ><br>	
+    <label class="toggle"><input type="checkbox" onchange="toggleCheckbox" name="ch2_enable" value="true"  %CH2_ENABLE% ><span class="shade"></span></label>
     
+    <hr>
     <h2>Chanel D:</h2>
-    Time On <input type="time" name="ch3_timeON" value=%CH3_TIME_ON%> 
+    <input type="time" class="time" name="ch3_timeON" value=%CH3_TIME_ON%>
     <div class="slidecontainer">
     <input type="range" min="1" max="60" class="slider" name="ch3_duration" id="ch3_duration" value="%CH3_DURATION%" >
     <p>Duration: <span id="ch3_duration_val"></span></p>
@@ -108,13 +132,14 @@ input:checked+.shade:before {-webkit-transform: translateX(52px); -ms-transform:
       var slider3 = document.getElementById("ch3_duration");
       var output3 = document.getElementById("ch3_duration_val");
       output3.innerHTML = slider3.value;
-      slider3.oninput = function() { output3.innerHTML = this.value;}
+      slider3.oninput = function() { output3.innerHTML = slider3.value;}
     </script>
-    <label class="toggle"><input type="checkbox" onchange="toggleCheckbox" name="ch3_enable" value="true"  %CH3_ENABLE% ><span class="shade"></span>    </label>		
+    <label class="toggle"><input type="checkbox" onchange="toggleCheckbox" name="ch3_enable" value="true"  %CH3_ENABLE% ><span class="shade"></span></label>		
 
-    <br>	
-    <br> <input type="submit" value="Submit">    
-	
+  <br><br>
+  <center>	
+  <input class="btn" type="submit" value="Submit">    
+  </center>    
 	
   </form>
 </body></html>)rawliteral";
@@ -223,13 +248,13 @@ void WebServerBegin()
   }	
   if (request->hasParam("ch2_duration")) 
 	{
-    strCH1_duration = request->getParam("ch2_duration")->value();
+    strCH2_duration = request->getParam("ch2_duration")->value();
 	  data.ch[2].duration = strCH2_duration.toInt();
   }	
   if (request->hasParam("ch3_duration")) 
 	{
     strCH3_duration = request->getParam("ch3_duration")->value();
-	  data.ch[3].duration = strCH1_duration.toInt();
+	  data.ch[3].duration = strCH3_duration.toInt();
   }	    
   if (request->hasParam("ch0_timeON")) 
 	{

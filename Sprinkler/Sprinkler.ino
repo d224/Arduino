@@ -16,6 +16,7 @@
 #include "WebServer.h"
 #include "sntp.h"
 #include "Sprinkler.h"
+#include "wiring_shift_mod.h"
 
 #include "UI.h"
 #include "motor.h"
@@ -26,6 +27,7 @@ EEPROM_struct data;
 
 WiFiMulti wifiMulti;
 WebTime webTime;
+
 
 uint32_t timeToSec(String t)
 {
@@ -101,10 +103,14 @@ void setup() {
   xTaskCreatePinnedToCore( taskUI,  "taskUI", 10240, NULL, 0, NULL, 1); 
 }
 
+uint8_t Buttons = 0;
+uint8_t Mode = MODE_INIT;
+
 uint32_t timeWD = 0;
 void modeSTA()
 {
-  Serial.print("### modeSTA ### ");
+  Mode = MODE_INIT;
+  Serial.println("### modeSTA ### ");
   WiFi.disconnect(true);
   delay(1000);
   WiFi.mode(WIFI_STA);
@@ -172,6 +178,7 @@ void modeSTA()
 ///////////////////////////////////////////////////////////////////////////
 void modeAP()
 {
+  Mode = MODE_OPERATIONAL;
   Serial.print("### modeAP ### ");
   WiFi.disconnect(true);
   delay(1000);
@@ -194,11 +201,29 @@ void modeAP()
   IPAddress myIP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
   Serial.println(myIP);
-   
+  
   WebServerBegin();
   for(;;)
   {
+    delay(100);
+    Buttons = TM1638Buttons();
+    //bPressed = ( Buttons & (0x1 << b) ) != 0 
+    if( IS_PRESSED(BTN_MODE_TEST) )
+    {
+      if( Mode == MODE_OPERATIONAL )
+      {
+        Serial.println("MODE_TEST");
+        motors_close_all();
+        Mode = MODE_TEST;
+      }
+      else 
+      {
+        Serial.println("MODE_OPERATIONAL");
+        motors_close_all();
+        Mode = MODE_OPERATIONAL;     
+      }
       delay(1000);
+    }
   }  
 }
 ///////////////////////////////////////////////////////////////////////////
