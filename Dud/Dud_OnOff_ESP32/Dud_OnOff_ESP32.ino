@@ -20,25 +20,28 @@
 #include "WebServer.h"
 #include <Adafruit_NeoPixel.h>
 #include <ezButton.h>
-#include <ACS712.h>
+//#include <ACS712.h>
+//#include "acs758.h"
 
 #define PW_SW LED_BUILTIN
+#define ACS_INPUT_PIN 1  //ADC1_0
 
 
 WiFiMulti wifiMulti;
-ezButton button( 12 );
+ezButton button( 16 );
 WiFiUDP udp;
 Adafruit_NeoPixel rgb0 (1, 13, NEO_GRB + NEO_KHZ800 );
 //  ACS712 5A  uses 185 mV per A
 //  ACS712 20A uses 100 mV per A
 //  ACS712 30A uses  66 mV per A
-ACS712  ACS( 33, 3.3, 4095, 100 );   // 20A
+//ACS712  ACS( 33, 3.3, 4095, 100 );   // 20A //ADC2 is shared with the WIFI module
+
 
 bool bState = false;
 bool bButtonReleased = false;
 bool bConnected = false;
 int nCurrent_mA = 0;
-#define bCurrent (nCurrent_mA > 1000 )
+#define bCurrent (nCurrent_mA > 500 )
 
 const char* host = "Dud_OnOff";
 
@@ -69,10 +72,13 @@ void SetSSR(uint8_t val)
 
 String GetPowerStr()
 {
+  /*
  if( bCurrent )  
     return "Porwer: " + String( float( nCurrent_mA / 100.0 ), 1 ) + " A\0";
   else
     return "";  
+    */
+  return "Porwer: " + String( nCurrent_mA ) + " \0";
 }
 
 void RGB_Show( uint32_t c )
@@ -94,43 +100,46 @@ void RGB_Begin()
 }
 void acsTask( void * parameter) 
 {
-  ACS.autoMidPoint();
-  Serial.print("MidPoint: ");
-  Serial.print(ACS.getMidPoint());
-  Serial.print(". Noise mV: ");
-  Serial.println(ACS.getNoisemV());
+  //ACS.autoMidPoint();
+  //Serial.print("MidPoint: ");
+  //Serial.print(ACS.getMidPoint());
+  //Serial.print(". Noise mV: ");
+  //Serial.println(ACS.getNoisemV());
+
+  //ACS758_Init();
+
+    analogReadResolution(12);
+    //analogSetWidth(12);
+    analogSetClockDiv(1);
+    //analogSetAttenuation(ADC_11db);
+    //(ACS_INPUT_PIN, ADC_2_5db);
 
   for(;;)
   {
+    /*
     if( bState )
     {
       nCurrent_mA = ACS.mA_AC( 50, 3 );
-      Serial.printf("Current: %d mA\n", nCurrent_mA);
-
-  //  Serial.print(". Form factor: ");
-  //  Serial.println(ACS.getFormFactor());      
+      Serial.printf("Current: %d mA\n", nCurrent_mA);     
     }
-    delay (1000 );
-  }
-}
+    */
 
-void buttonTask( void * parameter) 
-{
-  button.setDebounceTime( 50 );
-  for(;;)
-  {
-    button.loop();
-
-    if(button.isReleased())
+    uint16_t min = 8192;
+    uint16_t max = 0;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    for( int i=0; i<200; i++)
     {
-      bState = !bState;
-      Serial.println( "button: Released" );
-      bButtonReleased = true;
+      uint16_t res = analogRead( ACS_INPUT_PIN ); //analogRead() function takes 100 microseconds // 0.1 ms
+      if( max < res ) max = res;
+      if( min > res ) min = res;
+      //vTaskDelayUntil(&xLastWakeTime, 1);
     }
-    
-    delay(100);
+    nCurrent_mA = max - min;
+    Serial.printf("ACS delta: %d mA\n", nCurrent_mA );  
+    delay (5000);
   }
 }
+
 
 void notificationTask( void * parameter) 
 {
@@ -194,7 +203,7 @@ void setup(void)
   RGB_Begin();
 
   Serial.begin(115200);
-  while (!Serial && !Serial.available()) {}
+  //while (!Serial && !Serial.available()) {}
   Serial.printf("****Start %s****\n", host);
 
   WiFi.disconnect(true);
@@ -244,9 +253,10 @@ void setup(void)
 
   pinMode(PW_SW, OUTPUT);
 
-  xTaskCreatePinnedToCore( notificationTask,  "notificationTask", 10240, NULL, 0, NULL, 1);        
-  xTaskCreatePinnedToCore( buttonTask, "buttonTask", 10240,  NULL, 0, NULL, 1);         
-  xTaskCreatePinnedToCore( acsTask, "acsTask", 10240, NULL, 0, NULL, 1);        
+  xTaskCreatePinnedToCore( notificationTask,  "notificationTask", 10240, NULL, 1, NULL, 1);             
+  xTaskCreatePinnedToCore( acsTask, "acsTask", 10240, NULL, 2, NULL, 1);    
+
+  button.setDebounceTime( 5 );   
 }
 
 String srtPacket;
@@ -299,8 +309,17 @@ uint UDPMQTTHandlerDelay = 0;
 
 void loop(void) 
 {
-  //ESP.wdtFeed();
-  yield();
+
+  //delay(1);
+  //taskYIELD();
+
+  button.loop();
+  if(button.isReleased())
+  {
+    bState = !bState;
+    Serial.println( "button: Released" );
+    bButtonReleased = true;
+  }
 
   if ( wifiMulti.run() != WL_CONNECTED )
   {
@@ -350,13 +369,3 @@ void loop(void)
     }
   }
 }
-/*
-void loop0()
-{
-  int mA = ACS.mA_AC();
-  Serial.print("mA: ");
-  Serial.print(mA);
-  Serial.print(". Form factor: ");
-  Serial.println(ACS.getFormFactor());
-}
-*/

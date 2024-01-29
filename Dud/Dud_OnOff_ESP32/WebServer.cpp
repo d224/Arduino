@@ -16,6 +16,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 <head>
   <title>Water Heater</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="10">
   <style>
     html {font-family: Arial; display: inline-block; text-align: center;}
     h2 {font-size: 3.0rem;}
