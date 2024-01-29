@@ -48,9 +48,9 @@ void Motor::Set(bool open)
 
 Motor Motors[] = {
   Motor(0, 19, 18),
-  Motor(1, 19, 18),
-  Motor(2, 19, 18),
-  Motor(3, 19, 18),
+  Motor(1,  5, 17),
+  Motor(2,  4, 0 ),
+  Motor(3,  2, 15),
 };
 
 void open_valwe(uint8_t m, const uint32_t open_time_sec)

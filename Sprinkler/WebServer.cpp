@@ -236,6 +236,18 @@ void WebServerBegin()
 	  set_time(nCurrentTime); //in min
     }	
  */   
+
+  for(uint8_t i=0; i<request->params(); i++)
+  {
+    AsyncWebParameter* p = request->AsyncWebServerRequest::getParam(i);
+    Serial.print("*** [ ");  
+    Serial.print (p->name());
+    Serial.print(" : ");  
+    Serial.print (p->value());   
+    Serial.println(" ]");  
+  }
+
+
   if (request->hasParam("ch0_duration")) 
 	{
     strCH0_duration = request->getParam("ch0_duration")->value();
