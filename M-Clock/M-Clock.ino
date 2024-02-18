@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiMulti.h>
+#include "WebTime.h"
+#include "sntp.h"
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
 #include "DRV8825.h" //https://github.com/RobTillaart/DRV8825
@@ -17,6 +19,7 @@
 bool bConnected = false;
 const char* host = "M_Clock";
 WiFiMulti wifiMulti;
+WebTime webTime;
 
 DRV8825 stepper;
 
@@ -32,7 +35,7 @@ const int MEN = 1;
 #define STEP_X DRV8825_STEP_1x32
 #define STEPS_PerRotation ( 400 * STEP_X  )
 #define STEPS_PerHH ( STEPS_PerRotation * 72 / 30 )  // 30720
-#define STEPS_PerMM ( STEPS_PerHH / 60 ) 
+#define STEPS_PerMM ( STEPS_PerHH / 60 ) // 512
 
 const int IR_ADC = 2;
 const int IR_INT = 4;
@@ -59,10 +62,10 @@ void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info)
   //WiFi.begin(ssid, password);
 }
 
-hw_timer_t *Timer0_Cfg = NULL;
+hw_timer_t *Timer1_Cfg = NULL;
  
 uint do_steps = 0; //STEPS_PerHour;
-void IRAM_ATTR Timer0_ISR()
+void IRAM_ATTR Timer1_ISR()
 {
   if( do_steps )
   {
@@ -72,9 +75,25 @@ void IRAM_ATTR Timer0_ISR()
 }
 
 #define IR_TH 500
-# define IR_DETECTED ( ir_adc < IR_TH )
+int ir_adc;
+//#define IR_DETECTED ( ir_adc < IR_TH )
 
-void DoStep()
+int IR_READ( int sample=10 )
+{
+  int adc=0;
+  for( int i=0; i<sample; i++ )
+    adc+=analogRead( IR_ADC );
+  ir_adc = adc/sample;
+  return  ir_adc;
+}
+int IR_DETECTED( int sample=10 )
+{
+  return ( IR_READ(sample) < IR_TH );
+}
+
+
+
+void DoStep( uint32_t delayMs = 50 )
 {
   if( stepper.getDirection() == DIR_FORWARD )
     do_steps++;
@@ -82,13 +101,19 @@ void DoStep()
     do_steps--;
   stepper.step();
   //delay(1);
-  delayMicroseconds(50);
+  delayMicroseconds( delayMs );
 }
 
-void DoSteps( int n )
+void DoSteps( int n, uint32_t delayMs = 50 )
 {
-    for(int i=0; i<n; i++)
-      DoStep();
+  if( n > 0 && stepper.getDirection() == DIR_BACKWARD )
+    stepper.setDirection( DIR_FORWARD );
+
+  if( n < 0 && stepper.getDirection() == DIR_FORWARD )
+    stepper.setDirection( DIR_BACKWARD );
+  
+  for( int i=0; i<abs(n); i++ )
+    DoStep( delayMs );
 }
 
 int step_end;
@@ -97,44 +122,49 @@ void found_hh_mm()
 {
 
   //1. found area
-  int ir_adc = analogRead(IR_ADC);
-  while(  !IR_DETECTED )
+  ir_adc = analogRead(IR_ADC);
+  while(  !(ir_adc < IR_TH) )
   {
     DoStep();
     ir_adc = analogRead(IR_ADC);
   }
-  timerAlarmDisable(Timer0_Cfg);
+  timerAlarmDisable(Timer1_Cfg);
   Serial.printf("1.[%d] - %d\n", do_steps, ir_adc ) ;
-  //delay(1000);
 
   //2. found start
   stepper.setDirection( DIR_BACKWARD );
-  while( IR_DETECTED )
+  while( IR_DETECTED() )
   {
     DoStep();
-    ir_adc = analogRead(IR_ADC);
   }
   step_start = do_steps;
   Serial.printf("2.[%d] - %d\n", do_steps, ir_adc ) ;
 
   //3. found end
   stepper.setDirection( DIR_FORWARD );
-  while( !IR_DETECTED )
+  while( !IR_DETECTED() )
   {
     DoStep();
-    ir_adc = analogRead(IR_ADC);
   }
 
-  while( IR_DETECTED || (do_steps - step_start) < 10 )
+  int _min = 0x1FFE;
+  int _max = 0;
+  int d;
+  do
   {
-    DoStep();
-    Serial.printf("3.[%d] - %d\n", do_steps, ir_adc ) ;
-    ir_adc = analogRead(IR_ADC);
-  }
+    _min = min( _min, ir_adc);
+    _max = max( _max, ir_adc);
+    d = _max - _min;
+    DoSteps( 10 );
+    //Serial.printf("3.[%d] - %d\n", do_steps, ir_adc ) ;
+  }while( IR_DETECTED() || ( d < 50 ) );
+
   step_end = do_steps;
 
 
-  Serial.printf("found in range %d - %d\n", step_start, step_end ) ;
+  //Serial.printf("found in range %d - %d\n", step_start, step_end ) ;
+  int width = step_end - step_start;
+  Serial.printf("found in  %d with %d d=%d \n", step_start + width / 2 , width, d ) ;
 
 /*
   for(int i=0; i<60; i++)
@@ -151,100 +181,135 @@ void calib()
   // found first
   do_steps = 0;
   found_hh_mm();
-  delay(1000);
+  //delay(5000);
 
-  do_steps = ( step_end - step_start ) / 2;
+  do_steps = ( step_end - step_start ) / 2; // "0"
   DoSteps( STEPS_PerMM * 5 );
+
+//  return;
 
   // found next
   for (int i=0; i<15; i++)
   {
     found_hh_mm();
     int pos = step_start + ( step_end - step_start ) / 2;
-    if( abs( STEPS_PerHH - pos) < 100 )
+    int width = step_end - step_start;
+    if( abs( STEPS_PerHH - pos ) < 100 && width < 1000 )
     {
       Serial.printf("MM pos %d (%d)\n", pos, abs( STEPS_PerHH - pos) ) ;     
     }
     else 
     {
-      if( abs( (STEPS_PerHH / 2) - pos) < 2000 )
+      if( abs( (STEPS_PerHH / 2) - pos) < 2000  && width > 1000 )
       {
-        Serial.printf("HH pos %d (%d)\n", pos,  (STEPS_PerHH / 2) - pos ) ; 
+        Serial.printf("HH pos %d (%d)\n", pos,  abs((STEPS_PerHH / 2) - pos )) ; 
         int d = (STEPS_PerHH / 2) - step_end;
-        delay(1000);
-        if( d > 0 )
-          DoSteps( d );
-
+        Serial.printf("Go %d", d);
+        //delay(1000);
+        DoSteps( d );
         return;
       }
       else
       {
         Serial.printf("Wrong %d \n", pos ) ; 
+        do_steps = ( step_end - step_start ) / 2; // "0"
+      }
+    }
+    //delay(1000);    
+    do_steps = ( step_end - step_start ) / 2;
+    DoSteps(STEPS_PerMM * 25);
+  }
+  // found second
+  //do_steps = STEPS_PerHH;
+}
+
+void webTimeloop()
+{
+  uint32_t timeWD = 0;
+  for(int i = 0; i<1000; i++)
+  {
+    if( WebTime::isWiFi_connectNeeded() )
+    {
+      if( WiFi.status() != WL_CONNECTED )
+      {
+        Serial.println("Connecting Wifi...");
+        if ( wifiMulti.run() != WL_CONNECTED )
+        {
+            Serial.print("!WL_CONNECTED\n");
+            delay(8000);
+        }       
+      }
+    }
+    else  // !isWiFi_connectNeeded
+    {
+      if ( WiFi.status() == WL_CONNECTED )
+      {
+        Serial.print("WiFi close\n");
+        WiFi.disconnect(true);      
+        return;
+      }  
+    }
+
+    if( WebTime::isValid())
+    {
+      timeWD = 0;
+    }
+    else 
+    {
+      timeWD ++;
+      if( timeWD > 600)
+      {
+          Serial.print("Restart - mo time availible\n");
+          ESP.restart();
       }
     }
     delay(1000);    
-    do_steps = ( step_end - step_start ) / 2;
-    for(int i=0; i < STEPS_PerMM * 5 ; i++)
-      DoStep();
   }
-  // found second
+}
+uint8_t last_updated_mm; 
+void setHHMM()
+{
+  uint8_t h = webTime._HH;
+  uint8_t m = webTime._MM;
+  int mm_cor;
+  if( h => 12 ) h-=12;
+
+  Serial.printf("Set %d:%d\n", h, m);
+
+  if( h >= 6)
+    mm_cor = m + (h - 6) * 60;
+  else
+    mm_cor = (-1) * ((60 - m) +  ((5-h) * 60));
+
+  Serial.printf("MM correction  %d\n", mm_cor);
+
+  last_updated_mm = m;
+  DoSteps( STEPS_PerMM * mm_cor );
+
+  if( webTime._MM != m )
+  {
+    last_updated_mm = m;
+    if( webTime._MM > m )
+      mm_cor = webTime._MM - m;
+    else
+      mm_cor = webTime._MM + 60 - m;
+
+    Serial.printf("MM additional correction  %d\n", mm_cor);
+    DoSteps( STEPS_PerMM * mm_cor );
+  }
 
 
-  //do_steps = STEPS_PerHH;
 }
 
 void setup(void) 
 {
   Serial.begin(115200);
-  //while (!Serial && !Serial.available()) {}
-  //delay(100);
+
   delay(3000);
   Serial.printf("****Start %s****\n", host);
   pinMode(LED_BUILTIN, OUTPUT);
-/*
+
   WiFi.disconnect(true);
-  delay(1000);
-
-  WiFi.onEvent(WiFiStationConnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_CONNECTED);
-  WiFi.onEvent(WiFiGotIP, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
-  WiFi.onEvent(WiFiStationDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
-
-
-  WiFi.mode(WIFI_STA);
-  wifiMulti.addAP("D224_2.4G", "1qazxsw2");
-  wifiMulti.addAP("4OBEZYAN", "1qazxsw2");
-  wifiMulti.addAP("D224", "1qazxsw2");
-
-
-  Serial.println("Connecting Wifi...");
-  if (wifiMulti.run() == WL_CONNECTED) {
-    Serial.println("");
-    Serial.print("WiFi connected: ");
-    Serial.println(WiFi.localIP());
-  }
-
-  ArduinoOTA.setHostname(host);
-  ArduinoOTA.onStart([]() {
-    Serial.println("Start");
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-    ESP.restart();
-  });
-
-  ArduinoOTA.begin();
-*/
   
   stepper.begin(DIRECTION_PIN, STEP_PIN, M0, M1, M2); //, MEN
 
@@ -257,17 +322,38 @@ void setup(void)
   stepper.setDirection( DIR_FORWARD );
   stepper.setStepsPerRotation( STEPS_PerRotation ); 
 
-  Timer0_Cfg = timerBegin(0, 80, true);
-  timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
-  timerAlarmWrite(Timer0_Cfg, 500, true);  // 1000 = 1ms
+  Timer1_Cfg = timerBegin(1, 80, true);
+  timerAttachInterrupt(Timer1_Cfg, &Timer1_ISR, true);
+  timerAlarmWrite(Timer1_Cfg, 500, true);  // 1000 = 1ms
 
   pinMode(IR_INT, INPUT);
   calib();
 
+  webTime.Start();
+  
+  WiFi.mode(WIFI_STA);
+  wifiMulti.addAP("D224_2.4G", "1qazxsw2");
+  wifiMulti.addAP("4OBEZYAN", "1qazxsw2");
+  wifiMulti.addAP("D224", "1qazxsw2");
+
+  webTimeloop();
+
+  setHHMM();
 }
 
 
+
 void loop(void) 
+{
+  if( last_updated_mm != webTime._MM )
+  {
+    DoSteps( STEPS_PerMM , 1000 );
+    last_updated_mm = webTime._MM;
+  }
+  delay(100);
+}
+
+void loop0(void) 
 {
   /*
     //  read both buttons

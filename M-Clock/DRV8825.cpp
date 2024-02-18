@@ -99,7 +99,7 @@ bool DRV8825::setDirection(uint8_t direction)
 
 uint8_t DRV8825::getDirection()
 {
-  return digitalRead(_directionPin);
+  return _direction;
 }
 
 
