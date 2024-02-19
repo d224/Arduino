@@ -200,9 +200,10 @@ void calib()
     }
     else 
     {
-      if( abs( (STEPS_PerHH / 2) - pos) < 2000  && width > 1000 )
+      int delta = (STEPS_PerHH / 2) - pos;
+      if( abs( delta ) < 2500  && width > 1000 )
       {
-        Serial.printf("HH pos %d (%d)\n", pos,  abs((STEPS_PerHH / 2) - pos )) ; 
+        Serial.printf("HH pos %d (%d)\n", pos,  delta ) ; 
         int d = (STEPS_PerHH / 2) - step_end;
         Serial.printf("Go %d", d);
         //delay(1000);
@@ -211,7 +212,7 @@ void calib()
       }
       else
       {
-        Serial.printf("Wrong %d \n", pos ) ; 
+        Serial.printf("Wrong %d (%d)\n", pos, delta ) ; 
         do_steps = ( step_end - step_start ) / 2; // "0"
       }
     }
@@ -272,7 +273,8 @@ void setHHMM()
   uint8_t h = webTime._HH;
   uint8_t m = webTime._MM;
   int mm_cor;
-  if( h => 12 ) h-=12;
+  if( h >= 12 ) 
+    h-=12;
 
   Serial.printf("Set %d:%d\n", h, m);
 
@@ -311,7 +313,7 @@ void setup(void)
 
   WiFi.disconnect(true);
   
-  stepper.begin(DIRECTION_PIN, STEP_PIN, M0, M1, M2); //, MEN
+  stepper.begin(DIRECTION_PIN, STEP_PIN, MEN, M0, M1, M2); //, MEN
 
   //pinMode(FORWARD_PIN, INPUT_PULLUP);
   //pinMode(BACKWARD_PIN, INPUT_PULLUP);
@@ -347,7 +349,10 @@ void loop(void)
 {
   if( last_updated_mm != webTime._MM )
   {
+    stepper.enable();
+    delay(1);
     DoSteps( STEPS_PerMM , 1000 );
+    stepper.disable();
     last_updated_mm = webTime._MM;
   }
   delay(100);
