@@ -18,7 +18,7 @@ DRV8825::DRV8825()
 
 
 bool DRV8825::begin(uint8_t DIR, uint8_t STEP, uint8_t EN,
-                    uint8_t M0, uint8_t M1, uint8_t M2,
+                    uint8_t M0, uint8_t M1,
                     uint8_t RST, uint8_t SLP)
 {
   _directionPin = DIR;
@@ -43,12 +43,6 @@ bool DRV8825::begin(uint8_t DIR, uint8_t STEP, uint8_t EN,
     digitalWrite(_m1Pin, LOW);
   }  
 
-  if (M2 != 255)
-  {
-    _m2Pin = M2;
-    pinMode(_m2Pin, OUTPUT);
-    digitalWrite(_m2Pin, LOW);
-  }  
 
   //  handle conditional parameters
   if (EN != 255)
